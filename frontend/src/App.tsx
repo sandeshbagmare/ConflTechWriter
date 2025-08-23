@@ -1,0 +1,224 @@
+import React, { useState } from 'react'
+import './App.css'
+
+// Simple article generation form component
+const ArticleGenerationForm = ({ onJobCreated }: { onJobCreated: (job: any) => void }) => {
+  const [topic, setTopic] = useState('')
+  const [depth, setDepth] = useState<'beginner' | 'intermediate' | 'expert'>('intermediate')
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!topic.trim()) return
+
+    setIsSubmitting(true)
+
+    try {
+      const response = await fetch('http://localhost:8000/v1/jobs', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          topic: topic.trim(),
+          desired_depth: depth,
+          max_length: 5000,
+          include_visuals: true,
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to create job')
+      }
+
+      const jobData = await response.json()
+      onJobCreated({
+        job_id: jobData.job_id,
+        status: jobData.status,
+        topic: topic.trim(),
+      })
+    } catch (error) {
+      console.error('Error creating job:', error)
+      alert('Failed to create article. Please try again.')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="bg-white rounded-2xl shadow-xl border border-gray-200 overflow-hidden max-w-2xl mx-auto">
+      <div className="bg-gradient-to-r from-blue-600 to-purple-600 p-6 text-white">
+        <h2 className="text-2xl font-bold mb-2">Generate Technical Article</h2>
+        <p className="text-blue-100">Describe your topic and our AI agents will research and write a comprehensive article</p>
+      </div>
+
+      <form onSubmit={handleSubmit} className="p-6 space-y-6">
+        <div>
+          <label htmlFor="topic" className="block text-sm font-medium text-gray-700 mb-2">
+            Article Topic *
+          </label>
+          <textarea
+            id="topic"
+            value={topic}
+            onChange={(e) => setTopic(e.target.value)}
+            placeholder="e.g., Comprehensive guide to implementing microservices with Docker and Kubernetes"
+            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none transition-all"
+            rows={3}
+            required
+            disabled={isSubmitting}
+          />
+        </div>
+
+        <div>
+          <label htmlFor="depth" className="block text-sm font-medium text-gray-700 mb-2">
+            Target Audience
+          </label>
+          <select
+            id="depth"
+            value={depth}
+            onChange={(e) => setDepth(e.target.value as any)}
+            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            disabled={isSubmitting}
+          >
+            <option value="beginner">Beginner - New to the topic, needs fundamentals</option>
+            <option value="intermediate">Intermediate - Has basic knowledge, wants implementation details</option>
+            <option value="expert">Expert - Experienced, wants advanced concepts and best practices</option>
+          </select>
+        </div>
+
+        <button
+          type="submit"
+          disabled={!topic.trim() || isSubmitting}
+          className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white py-4 px-6 rounded-lg font-semibold disabled:opacity-50 disabled:cursor-not-allowed hover:from-blue-700 hover:to-purple-700 transition-all duration-200 flex items-center justify-center space-x-2"
+        >
+          {isSubmitting ? (
+            <>
+              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+              <span>Starting AI Agents...</span>
+            </>
+          ) : (
+            <span>Generate Article</span>
+          )}
+        </button>
+
+        <div className="text-sm text-gray-600 bg-blue-50 p-4 rounded-lg">
+          <p className="font-medium text-blue-900">How it works:</p>
+          <ul className="mt-1 space-y-1 text-blue-800">
+            <li>• AI agents research your topic using free web search</li>
+            <li>• Every fact is verified and linked to credible sources</li>
+            <li>• Multiple quality checks ensure accuracy and readability</li>
+            <li>• Processing typically takes 3-5 minutes</li>
+          </ul>
+        </div>
+      </form>
+    </div>
+  )
+}
+
+// Simple job status component
+const JobStatus = ({ job }: { job: any }) => {
+  const [status, setStatus] = useState(job.status)
+  const [result, setResult] = useState<any>(null)
+
+  React.useEffect(() => {
+    if (status === 'completed') return
+
+    const interval = setInterval(async () => {
+      try {
+        const response = await fetch(`http://localhost:8000/v1/jobs/${job.job_id}`)
+        const jobData = await response.json()
+        
+        setStatus(jobData.status)
+        if (jobData.status === 'completed' && jobData.result) {
+          setResult(jobData.result)
+        }
+      } catch (error) {
+        console.error('Error checking job status:', error)
+      }
+    }, 2000)
+
+    return () => clearInterval(interval)
+  }, [job.job_id, status])
+
+  return (
+    <div className="bg-white rounded-lg shadow-lg border p-6 max-w-4xl mx-auto">
+      <div className="mb-4">
+        <h3 className="text-lg font-semibold text-gray-900">Article Generation Status</h3>
+        <p className="text-gray-600">Topic: {job.topic}</p>
+      </div>
+
+      <div className="mb-6">
+        <div className="flex items-center space-x-2">
+          <div className={`w-3 h-3 rounded-full ${
+            status === 'completed' ? 'bg-green-500' : 
+            status === 'failed' ? 'bg-red-500' : 'bg-yellow-500 animate-pulse'
+          }`}></div>
+          <span className="font-medium capitalize">{status}</span>
+        </div>
+      </div>
+
+      {result && (
+        <div className="border-t pt-6">
+          <h4 className="text-lg font-semibold mb-4">Generated Article</h4>
+          <div className="prose max-w-none bg-gray-50 p-4 rounded-lg">
+            <pre className="whitespace-pre-wrap font-mono text-sm">{result.content || result.article}</pre>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function App() {
+  const [currentJob, setCurrentJob] = useState<any>(null)
+
+  const handleJobCreated = (job: any) => {
+    setCurrentJob(job)
+  }
+
+  const handleNewArticle = () => {
+    setCurrentJob(null)
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50 py-8 px-4">
+      <div className="max-w-6xl mx-auto">
+        <div className="text-center mb-8">
+          <h1 className="text-4xl font-bold text-gray-900 mb-4">
+            AI Technical Article Generator
+          </h1>
+          <p className="text-xl text-gray-600 max-w-3xl mx-auto">
+            Generate comprehensive technical articles using multi-agent AI research. 
+            Completely free - no API keys required!
+          </p>
+        </div>
+
+        {!currentJob ? (
+          <ArticleGenerationForm onJobCreated={handleJobCreated} />
+        ) : (
+          <div className="space-y-6">
+            <button
+              onClick={handleNewArticle}
+              className="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-lg transition-colors"
+            >
+              ← Generate New Article
+            </button>
+            <JobStatus job={currentJob} />
+          </div>
+        )}
+
+        <div className="mt-12 text-center">
+          <div className="bg-green-50 border border-green-200 rounded-lg p-6">
+            <h3 className="text-lg font-semibold text-green-800 mb-2">100% Free Solution</h3>
+            <p className="text-green-700">
+              This system uses DuckDuckGo search (free), optional Google Gemini (free tier), 
+              and falls back to template-based responses. No subscriptions or paid APIs required!
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export default App

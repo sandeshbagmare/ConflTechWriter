@@ -1,0 +1,123 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: ai_articles_db
+    environment:
+      POSTGRES_DB: ai_articles
+      POSTGRES_USER: aiuser
+      POSTGRES_PASSWORD: aipassword
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aiuser -d ai_articles"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Redis for caching and message broker
+  redis:
+    image: redis:7-alpine
+    container_name: ai_articles_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ai_articles_backend
+    environment:
+      - DEBUG=true
+      - DATABASE_URL=postgresql://aiuser:aipassword@postgres:5432/ai_articles
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/2
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GOOGLE_SEARCH_API_KEY=${GOOGLE_SEARCH_API_KEY}
+      - GOOGLE_SEARCH_ENGINE_ID=${GOOGLE_SEARCH_ENGINE_ID}
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend/app:/app/app:ro
+    command: >
+      sh -c "
+        echo 'Waiting for database...' &&
+        sleep 10 &&
+        uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+      "
+
+  # Celery Worker
+  celery-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ai_articles_worker
+    environment:
+      - DEBUG=true
+      - DATABASE_URL=postgresql://aiuser:aipassword@postgres:5432/ai_articles
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/2
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GOOGLE_SEARCH_API_KEY=${GOOGLE_SEARCH_API_KEY}
+      - GOOGLE_SEARCH_ENGINE_ID=${GOOGLE_SEARCH_ENGINE_ID}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend/app:/app/app:ro
+    command: >
+      sh -c "
+        echo 'Waiting for services...' &&
+        sleep 15 &&
+        celery -A app.workers.celery_app worker --loglevel=info
+      "
+
+  # Celery Flower (monitoring)
+  celery-flower:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ai_articles_flower
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/2
+    ports:
+      - "5555:5555"
+    depends_on:
+      - redis
+    command: >
+      sh -c "
+        sleep 20 &&
+        celery -A app.workers.celery_app flower --port=5555
+      "
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  default:
+    name: ai_articles_network

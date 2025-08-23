@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Content Creation Assistant</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/flowbite/1.6.5/flowbite.min.css" rel="stylesheet" />
+    <style>
+        body {
+            background-color: #111827;
+            color: #f3f4f6;
+        }
+        .status-dot {
+            height: 10px;
+            width: 10px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+        .status-queued { background-color: #fbbf24; }
+        .status-running { background-color: #3b82f6; }
+        .status-refining { background-color: #a855f7; }
+        .status-completed { background-color: #22c55e; }
+        .status-failed { background-color: #ef4444; }
+    </style>
+</head>
+<body class="font-sans">
+    <div id="root"></div>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/flowbite/1.6.5/flowbite.min.js"></script>
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        const API_URL = 'http://localhost:8000/v1';
+
+        function App() {
+            const [jobs, setJobs] = useState([]);
+            const [selectedJob, setSelectedJob] = useState(null);
+
+            const addJob = (newJob) => {
+                setJobs(prev => [newJob, ...prev]);
+                setSelectedJob(newJob.job_id);
+            };
+
+            return (
+                <div className="min-h-screen bg-gray-900 text-gray-200 p-4 sm:p-6 lg:p-8">
+                    <Header />
+                    <main className="mt-8 grid grid-cols-1 lg:grid-cols-3 gap-8">
+                        <div className="lg:col-span-1">
+                            <ArticleGenerationForm onJobCreated={addJob} />
+                            <JobList jobs={jobs} selectedJob={selectedJob} setSelectedJob={setSelectedJob} />
+                        </div>
+                        <div className="lg:col-span-2">
+                            <JobDetails job_id={selectedJob} />
+                        </div>
+                    </main>
+                </div>
+            );
+        }
+
+        const Header = () => (
+            <header className="flex justify-between items-center pb-4 border-b border-gray-700">
+                <h1 className="text-3xl font-bold text-white">AI Content Creation Assistant</h1>
+                <div className="text-sm text-gray-400">Powered by FastAPI & React</div>
+            </header>
+        );
+
+        const ArticleGenerationForm = ({ onJobCreated }) => {
+            const [topic, setTopic] = useState('');
+            const [depth, setDepth] = useState('intermediate');
+            const [isSubmitting, setIsSubmitting] = useState(false);
+
+            const handleSubmit = async (e) => {
+                e.preventDefault();
+                if (!topic.trim()) {
+                    alert('Please enter a topic.');
+                    return;
+                }
+                setIsSubmitting(true);
+                try {
+                    const response = await fetch(`${API_URL}/jobs/`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ topic, desired_depth: depth, max_length: 2000, include_visuals: false }),
+                    });
+                    if (!response.ok) throw new Error('Failed to create job');
+                    const newJob = await response.json();
+                    onJobCreated(newJob);
+                    setTopic('');
+                } catch (error) {
+                    console.error('Error creating job:', error);
+                    alert('Error creating job. Please check the console.');
+                } finally {
+                    setIsSubmitting(false);
+                }
+            };
+
+            return (
+                <div className="bg-gray-800 p-6 rounded-lg shadow-lg">
+                    <h2 className="text-xl font-semibold mb-4">Generate New Article</h2>
+                    <form onSubmit={handleSubmit}>
+                        <div className="mb-4">
+                            <label htmlFor="topic" className="block text-sm font-medium text-gray-300 mb-1">Topic</label>
+                            <input
+                                type="text"
+                                id="topic"
+                                value={topic}
+                                onChange={(e) => setTopic(e.target.value)}
+                                className="w-full bg-gray-700 border border-gray-600 text-white rounded-md p-2 focus:ring-blue-500 focus:border-blue-500"
+                                placeholder="e.g., 'The Future of AI in Healthcare'"
+                                disabled={isSubmitting}
+                            />
+                        </div>
+                        <div className="mb-4">
+                            <label htmlFor="depth" className="block text-sm font-medium text-gray-300 mb-1">Desired Depth</label>
+                            <select
+                                id="depth"
+                                value={depth}
+                                onChange={(e) => setDepth(e.target.value)}
+                                className="w-full bg-gray-700 border border-gray-600 text-white rounded-md p-2 focus:ring-blue-500 focus:border-blue-500"
+                                disabled={isSubmitting}
+                            >
+                                <option value="beginner">Beginner</option>
+                                <option value="intermediate">Intermediate</option>
+                                <option value="expert">Expert</option>
+                            </select>
+                        </div>
+                        <button
+                            type="submit"
+                            disabled={isSubmitting}
+                            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md disabled:bg-gray-500 transition-colors duration-200"
+                        >
+                            {isSubmitting ? 'Generating...' : 'Generate Article'}
+                        </button>
+                    </form>
+                </div>
+            );
+        };
+
+        const JobList = ({ jobs, selectedJob, setSelectedJob }) => (
+            <div className="bg-gray-800 p-6 rounded-lg shadow-lg mt-8">
+                <h2 className="text-xl font-semibold mb-4">Generation History</h2>
+                {jobs.length === 0 ? (
+                    <p className="text-gray-400">No jobs created yet.</p>
+                ) : (
+                    <ul className="space-y-2">
+                        {jobs.map(job => (
+                            <li
+                                key={job.job_id}
+                                onClick={() => setSelectedJob(job.job_id)}
+                                className={`p-3 rounded-md cursor-pointer transition-colors duration-200 ${selectedJob === job.job_id ? 'bg-gray-700' : 'bg-gray-900 hover:bg-gray-700'}`}
+                            >
+                                <div className="flex justify-between items-center">
+                                    <span className="font-medium truncate" title={job.job_id}>{job.job_id.substring(0, 8)}...</span>
+                                    <span className={`text-xs font-semibold px-2 py-1 rounded-full capitalize status-${job.status.toLowerCase()}`}>
+                                        {job.status}
+                                    </span>
+                                </div>
+                            </li>
+                        ))}
+                    </ul>
+                )}
+            </div>
+        );
+
+        const JobDetails = ({ job_id }) => {
+            const [jobStatus, setJobStatus] = useState(null);
+            const [article, setArticle] = useState(null);
+            const [error, setError] = useState(null);
+            const eventSourceRef = useRef(null);
+
+            useEffect(() => {
+                if (!job_id) {
+                    setJobStatus(null);
+                    setArticle(null);
+                    setError(null);
+                    return;
+                }
+
+                const cleanup = () => {
+                    if (eventSourceRef.current) {
+                        eventSourceRef.current.close();
+                        eventSourceRef.current = null;
+                    }
+                };
+
+                cleanup();
+                setJobStatus(null);
+                setArticle(null);
+                setError(null);
+
+                eventSourceRef.current = new EventSource(`${API_URL}/jobs/${job_id}/events`);
+
+                eventSourceRef.current.onmessage = (event) => {
+                    const data = JSON.parse(event.data);
+                    if (data.error) {
+                        setError(data.error);
+                        cleanup();
+                        return;
+                    }
+                    setJobStatus(data);
+                    if (data.status === 'COMPLETED' || data.status === 'FAILED') {
+                        cleanup();
+                        if(data.status === 'COMPLETED') fetchArticle(job_id);
+                    }
+                };
+
+                eventSourceRef.current.onerror = (err) => {
+                    console.error("EventSource failed:", err);
+                    setError("Connection to server lost.");
+                    cleanup();
+                };
+
+                return cleanup;
+            }, [job_id]);
+
+            const fetchArticle = async (id) => {
+                try {
+                    const response = await fetch(`${API_URL}/jobs/${id}/artifacts`);
+                    if (!response.ok) throw new Error('Failed to fetch article');
+                    const data = await response.json();
+                    setArticle(data.article);
+                } catch (err) {
+                    setError(err.message);
+                }
+            };
+
+            if (!job_id) {
+                return <div className="bg-gray-800 p-6 rounded-lg shadow-lg h-full flex items-center justify-center"><p className="text-gray-400">Select a job to view details</p></div>;
+            }
+
+            return (
+                <div className="bg-gray-800 p-6 rounded-lg shadow-lg h-full">
+                    <h2 className="text-xl font-semibold mb-4">Job Details</h2>
+                    <p className="text-sm text-gray-400 mb-4 break-all">ID: {job_id}</p>
+                    
+                    {error && <div className="bg-red-900 border border-red-700 text-red-200 px-4 py-3 rounded relative mb-4" role="alert">{error}</div>}
+
+                    {jobStatus && <JobStatusDisplay status={jobStatus} />}
+
+                    {article ? <ArticleDisplay article={article} /> : <p className="text-gray-400 mt-4">Waiting for article to be generated...</p>}
+                </div>
+            );
+        };
+
+        const JobStatusDisplay = ({ status }) => (
+            <div className="mb-4 p-4 bg-gray-900 rounded-md">
+                <h3 className="font-semibold text-lg mb-2">Current Status</h3>
+                <div className="flex items-center space-x-3">
+                    <span className={`status-dot status-${status.status.toLowerCase()}`}></span>
+                    <span className="font-bold text-lg capitalize">{status.status}</span>
+                </div>
+                <p className="text-sm text-gray-400 mt-1">Last updated: {new Date(status.timestamp).toLocaleString()}</p>
+            </div>
+        );
+
+        const ArticleDisplay = ({ article }) => (
+            <div className="mt-6">
+                <h3 className="text-2xl font-bold mb-3">{article.title}</h3>
+                <div className="prose prose-invert max-w-none" dangerouslySetInnerHTML={{ __html: article.content.replace(/\n/g, '<br />') }} />
+                
+                {article.bibliography && (
+                    <div className="mt-8">
+                        <h4 className="text-xl font-semibold mb-3">Sources & References</h4>
+                        <ul className="list-disc list-inside space-y-2">
+                            {article.bibliography.map(ref => (
+                                <li key={ref.id}>
+                                    <a href={ref.url} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">{ref.title}</a>
+                                </li>
+                            ))}
+                        </ul>
+                    </div>
+                )}
+            </div>
+        );
+
+        ReactDOM.render(<App />, document.getElementById('root'));
+    </script>
+</body>
+</html>

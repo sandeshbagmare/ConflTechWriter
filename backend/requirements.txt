@@ -1,0 +1,39 @@
+# Core Framework
+fastapi
+uvicorn[standard]
+pydantic
+pydantic-settings
+
+# Database
+sqlalchemy
+psycopg2-binary
+asyncpg
+
+# Task Queue & Caching
+celery[redis]
+redis
+
+# AI/LLM Integration
+google-generativeai
+langgraph
+langchain
+langchain-google-genai
+
+# Web Scraping
+httpx
+beautifulsoup4
+lxml
+
+# Search API (Free alternatives)
+duckduckgo-search
+requests
+
+# Observability & Monitoring
+structlog
+
+# Environment & Configuration
+python-dotenv
+python-multipart
+
+# Data Validation & Serialization
+aiofiles
